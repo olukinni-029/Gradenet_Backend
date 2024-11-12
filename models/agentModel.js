@@ -1,67 +1,107 @@
-const mongoose = require('mongoose');
+const { Model, DataTypes } = require('sequelize');
 const bcrypt = require('bcrypt');
+const sequelize = require('../config/db'); // Import your sequelize instance
 
-const agentSchema = new mongoose.Schema({
-  firstName: { type: String, required: true },
-  lastName: { type: String, required: true },
-  email: { 
-    type: String, 
-    required: true, 
+class Agent extends Model {
+  // Method to compare password for login
+  async comparePassword(password) {
+    return bcrypt.compare(password, this.password);
+  }
+}
+
+Agent.init({
+  firstName: {
+    type: DataTypes.STRING,
+    allowNull: false
+  },
+  lastName: {
+    type: DataTypes.STRING,
+    allowNull: false
+  },
+  email: {
+    type: DataTypes.STRING,
+    allowNull: false,
     unique: true,
-    lowercase: true, 
-    match: [/.+\@.+\..+/, "Please fill a valid email address"] 
+    lowercase: true,
+    validate: {
+      isEmail: {
+        msg: 'Please fill a valid email address'
+      }
+    }
   },
-  phone:  {
-    type: String,
-    required: [true, "Phone number is required"],
-    match: [/^\+?[1-9]\d{1,14}$/, "Please enter a valid phone number"]
+  phone: {
+    type: DataTypes.STRING,
+    allowNull: false,
+    validate: {
+      is: {
+        args: [/^\+?[1-9]\d{1,14}$/],
+        msg: 'Please enter a valid phone number'
+      }
+    }
   },
-  location: { type: String, required: true },
-  region: { type: String, required: true },
-  hearAboutUs: { type: String, trim:true, required: true },
-  password: { 
-    type: String, 
-    required: true,
-    alphanumeric: true, 
-    minlength: [6, "Password must be at least 6 characters long"] 
+  location: {
+    type: DataTypes.STRING,
+    allowNull: false
+  },
+  region: {
+    type: DataTypes.STRING,
+    allowNull: false
+  },
+  hearAboutUs: {
+    type: DataTypes.STRING,
+    allowNull: false,
+    trim: true
+  },
+  password: {
+    type: DataTypes.STRING,
+    allowNull: false,
+    validate: {
+      len: {
+        args: [6],
+        msg: 'Password must be at least 6 characters long'
+      },
+      isAlphanumeric: {
+        msg: 'Password must be alphanumeric'
+      }
+    }
   },
   confirmPassword: {
-    type: String,
-    required: true,
-    alphanumeric: true,
+    type: DataTypes.STRING,
+    allowNull: false,
     validate: {
-      validator: function(value) {
-        return value === this.password;
+      isAlphanumeric: {
+        msg: 'Confirm password must be alphanumeric'
       },
-      message: "Passwords do not match"
+      isMatch(value) {
+        if (value !== this.password) {
+          throw new Error('Passwords do not match');
+        }
+      }
     }
   },
-  agree: { type: Boolean, required: true }
-},{
-    timestamps: true,
-    versionKey: false,
-  });
-
-
-agentSchema.pre('save', function(next) {
-  // Only remove confirmPassword if it is the password match
-  if (this.confirmPassword === this.password) {
-    this.confirmPassword = undefined; // Remove confirmPassword
+  agree: {
+    type: DataTypes.BOOLEAN,
+    allowNull: false
   }
-  next();
-});
-agentSchema.pre("save", async function (next) {
-    const agent = this;
-    if (agent.isModified("password")) {
-      agent.password = await bcrypt.hash(agent.password, 10);
+}, {
+  sequelize, // Sequelize instance
+  modelName: 'Agent',
+  tableName: 'agents',
+  timestamps: true,
+  underscored: true,
+  hooks: {
+    beforeSave: async (agent, options) => {
+      // Remove confirmPassword before saving the agent to DB
+      if (agent.confirmPassword === agent.password) {
+        agent.confirmPassword = undefined;
+      }
+      
+      // Hash password if it's modified
+      if (agent.password) {
+        agent.password = await bcrypt.hash(agent.password, 10);
+      }
     }
-    next();
-  });
-  
-  // Compare passwords for login
-  agentSchema.methods.comparePassword = async function (password) {
-    return bcrypt.compare(password, this.password);
-  };
+  }
+});
 
-
-module.exports = mongoose.model('Agent', agentSchema);
+module.exports = Agent;
